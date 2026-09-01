@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bodycam Build Optimizer</title>
+
+<style>
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        margin: 0;
+        padding: 30px;
+        background: #101010;
+        color: #eee;
+        font-family: Arial, sans-serif;
+    }
+
+    .container {
+        max-width: 800px;
+        margin: auto;
+    }
+
+    h1 {
+        margin-top: 0;
+    }
+
+    .panel {
+        background: #191919;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto;
+        gap: 12px;
+        align-items: end;
+    }
+
+    label {
+        display: block;
+        margin-bottom: 6px;
+    }
+
+    select,
+    input,
+    button {
+        width: 100%;
+        padding: 9px;
+        background: #252525;
+        color: white;
+        border: 1px solid #444;
+        border-radius: 5px;
+    }
+
+    button {
+        cursor: pointer;
+    }
+
+    button:hover {
+        background: #333;
+    }
+
+    #targetContainer {
+        display: none;
+    }
+
+    .stat-row {
+        display: grid;
+        grid-template-columns: 1fr 110px 120px;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .stat-name {
+        font-weight: bold;
+    }
+
+    .result {
+        background: #151515;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 20px;
+    }
+
+    .build-item {
+        padding: 5px 0;
+    }
+
+    .positive {
+        color: #62e66e;
+    }
+
+    .negative {
+        color: #ff6666;
+    }
+
+    .neutral {
+        color: #aaa;
+    }
+
+    .score {
+        font-size: 20px;
+        font-weight: bold;
+        margin-top: 15px;
+    }
+
+    @media (max-width: 650px) {
+        .controls,
+        .stat-row {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <h1>Bodycam Build Optimizer</h1>
+
+    <div class="panel">
+        <div class="controls">
+
+            <div>
+                <label>Mode</label>
+                <select id="mode">
+                    <option value="best_overall">Best Overall</option>
+                    <option value="worst_overall">Worst Overall</option>
+                    <option value="maximize_stat">Maximize Stat</option>
+                    <option value="minimize_stat">Minimize Stat</option>
+                </select>
+            </div>
+
+            <div id="targetContainer">
+                <label>Target Stat</label>
+                <select id="targetStat"></select>
+            </div>
+
+            <button onclick="calculate()">Calculate</button>
+
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Stat Settings</h2>
+
+        <div id="statEditor"></div>
+    </div>
+
+    <div class="result" id="result">
+        No result yet.
+    </div>
+
+</div>
+
+<script>
+
+const categories = {
+    barrel: [
+        {"name":"drako","vertical recoil":40,"horizontal recoil":15,"hip fire spread":15,"ads speed":20,"equip speed":10,"movement speed":10,"reload speed":10},
+        {"name":"karp","horizontal recoil":10,"hip fire spread":5,"ads speed":15,"equip speed":5,"movement speed":5},
+        {"name":"pok","vertical recoil":10,"horizontal recoil":10,"ads speed":15,"equip speed":5,"movement speed":5,"reload speed":5},
+        {"name":"vitya","vertical recoil":15,"horizontal recoil":15,"hip fire spread":15,"ads speed":20,"equip speed":10,"movement speed":5,"reload speed":10},
+        {"name":"karpm","vertical recoil":-10,"horizontal recoil":-10},
+        {"name":"kas","horizontal recoil":-5,"ads speed":5,"equip speed":5}
+    ],
+
+    muzzle: [
+        {"name":"uz-1","vertical recoil":30,"horizontal recoil":25,"hip fire spread":-30,"ads speed":-5,"equip speed":20},
+        {"name":"bc7","vertical recoil":10,"horizontal recoil":5,"hip fire spread":-15},
+        {"name":"botir","hip fire spread":10,"ads speed":15},
+        {"name":"ddttmm","vertical recoil":10,"horizontal recoil":5,"hip fire spread":-15},
+        {"name":"dlq","vertical recoil":-20,"horizontal recoil":-20,"ads speed":-15,"equip speed":-10},
+        {"name":"dtmm","vertical recoil":10,"horizontal recoil":5,"hip fire spread":-15},
+        {"name":"gara","vertical recoil":-25,"horizontal recoil":-15,"hip fire spread":25},
+        {"name":"gis","vertical recoil":10,"horizontal recoil":5,"hip fire spread":-15},
+        {"name":"harmonic","vertical recoil":10,"horizontal recoil":5,"hip fire spread":-15},
+        {"name":"helios","vertical recoil":10,"horizontal recoil":5,"hip fire spread":10,"ads speed":25},
+        {"name":"hit","vertical recoil":10,"horizontal recoil":5,"hip fire spread":10,"ads speed":25},
+        {"name":"hive","vertical recoil":10,"horizontal recoil":5,"hip fire spread":-15},
+        {"name":"hymne","vertical recoil":10,"horizontal recoil":5,"hip fire spread":-15},
+        {"name":"luks","vertical recoil":-25,"horizontal recoil":-15,"hip fire spread":25},
+        {"name":"niks","hip fire spread":10,"ads speed":15},
+        {"name":"nocturne","vertical recoil":-20,"horizontal recoil":-10,"ads speed":-15},
+        {"name":"ospray","vertical recoil":20,"horizontal recoil":30,"hip fire spread":-6,"ads speed":-15},
+        {"name":"sg5-k","vertical recoil":-25,"horizontal recoil":-15,"hip fire spread":25},
+        {"name":"sg9-x","vertical recoil":20,"horizontal recoil":30,"hip fire spread":-15,"ads speed":-15},
+        {"name":"shex","vertical recoil":10,"horizontal recoil":5,"hip fire spread":-15},
+        {"name":"snare","horizontal recoil":10,"hip fire spread":-20,"ads speed":-5},
+        {"name":"sonata","vertical recoil":-25,"horizontal recoil":-15,"hip fire spread":25},
+        {"name":"soundwave","horizontal recoil":10,"hip fire spread":-20,"ads speed":5},
+        {"name":"synth strike","vertical recoil":10,"horizontal recoil":5,"hip fire spread":-15},
+        {"name":"tara","vertical recoil":-20,"horizontal recoil":-20,"ads speed":-15,"equip speed":-10},
+        {"name":"tor","vertical recoil":-20,"horizontal recoil":-20,"hip fire spread":-15,"equip speed":-10},
+        {"name":"vlos","horizontal recoil":10,"hip fire spread":-20,"ads speed":-5},
+        {"name":"warbeat","horizontal recoil":10,"hip fire spread":-20,"ads speed":-5},
+        {"name":"waw","vertical recoil":-20,"horizontal recoil":-20,"ads speed":-15,"equip speed":-10},
+        {"name":"iris","vertical recoil":-25,"horizontal recoil":-15,"hip fire spread":25},
+        {"name":"protector","vertical recoil":-20,"horizontal recoil":-20,"ads speed":-15,"equip speed":-10},
+        {"name":"banned","vertical recoil":-15,"equip speed":-5},
+        {"name":"sun7","vertical recoil":-20,"equip speed":-5},
+        {"name":"thimpel","vertical recoil":-15},
+        {"name":"bat","vertical recoil":-5,"horizontal recoil":-10,"recoil recovery":5,"weapon kick":15},
+        {"name":"brake","vertical recoil":-10,"horizontal recoil":-10,"recoil recovery":5,"weapon kick":20},
+        {"name":"kerdo","vertical recoil":-30,"weapon kick":20},
+        {"name":"bat","vertical recoil":-5,"horizontal recoil":-10,"recoil recovery":5,"weapon kick":15},
+        {"name":"base"}
+    ],
+
+    magazine: [
+        {"name":"koro","reload speed":-15},
+        {"name":"usk","ads speed":-10,"reload speed":10},
+        {"name":"base"}
+    ],
+
+    grip: [
+        {"name":"hexo","ads speed":5},
+        {"name":"kaso","equip speed":5},
+        {"name":"vytaz","reload speed":5},
+        {"name":"base"}
+    ],
+
+    stock: [
+        {"name":"spatio","vertical recoil":-10,"horizontal recoil":-10,"ads speed":-5},
+        {"name":"stomp","vertical recoil":-20},
+        {"name":"faldowy","horizontal recoil":35,"vertical recoil":45,"weapon kick":20,"ads speed":25,"equip speed":10},
+        {"name":"kadena","vertical recoil":30,"horizontal recoil":25,"weapon kick":10,"ads speed":25,"equip speed":25},
+        {"name":"pyta","horizontal recoil":10,"vertical recoil":30,"weapon kick":20,"ads speed":20,"equip speed":5,"reload speed":15},
+        {"name":"sako","vertical recoil":100,"horizontal recoil":100,"ads speed":50,"equip speed":20,"movement speed":5,"reload speed":20},
+        {"name":"vity 17","horizontal recoil":20,"vertical recoil":20,"weapon kick":20,"ads speed":25,"movement speed":5,"reload speed":25},
+        {"name":"wired","vertical recoil":40,"weapon kick":15,"ads speed":35,"equip speed":20},
+        {"name":"hauban","vertical recoil":-30,"weapon kick":-15,"ads speed":-15},
+        {"name":"pix","vertical recoil":-10,"horizontal recoil":-10,"ads speed":-5,"reload speed":-5},
+        {"name":"pix ext","horizontal recoil":-30,"vertical recoil":-30,"weapon kick":-15,"ads speed":-20,"movement speed":5,"reload speed":-20},
+        {"name":"tactik","vertical recoil":-15,"weapon kick":-20,"equip speed":10},
+        {"name":"base"}
+    ]
+};
+
+const baseStats = {
+    "equip speed": 0,
+    "horizontal recoil": 0,
+    "vertical recoil": 0,
+    "recoil recovery": 0,
+    "weapon kick": 0,
+    "hip fire spread": 0,
+    "ads speed": 0,
+    "movement speed": 0,
+    "reload speed": 0
+};
+
+let statRules = {
+    "equip speed": "good",
+    "horizontal recoil": "bad",
+    "vertical recoil": "bad",
+    "recoil recovery": "good",
+    "weapon kick": "bad",
+    "hip fire spread": "bad",
+    "ads speed": "good",
+    "movement speed": "good",
+    "reload speed": "good"
+};
+
+let statWeights = {
+    "equip speed": 1.0,
+    "horizontal recoil": 2.0,
+    "vertical recoil": 5.0,
+    "recoil recovery": 1.0,
+    "weapon kick": 1.0,
+    "hip fire spread": 2.0,
+    "ads speed": 3.0,
+    "movement speed": 0.5,
+    "reload speed": 5.0
+};
+
+const statEditor = document.getElementById("statEditor");
+const targetStat = document.getElementById("targetStat");
+const mode = document.getElementById("mode");
+const targetContainer = document.getElementById("targetContainer");
+
+for (const stat of Object.keys(baseStats)) {
+
+    const row = document.createElement("div");
+    row.className = "stat-row";
+
+    row.innerHTML = `
+        <div class="stat-name">${stat}</div>
+
+        <input
+            type="number"
+            step="0.1"
+            value="${statWeights[stat]}"
+            title="Weight"
+        >
+
+        <select title="Rule">
+            <option value="good" ${statRules[stat] === "good" ? "selected" : ""}>Good</option>
+            <option value="bad" ${statRules[stat] === "bad" ? "selected" : ""}>Bad</option>
+        </select>
+    `;
+
+    const weightInput = row.querySelector("input");
+    const ruleInput = row.querySelector("select");
+
+    weightInput.addEventListener("input", () => {
+        statWeights[stat] = Number(weightInput.value);
+    });
+
+    ruleInput.addEventListener("change", () => {
+        statRules[stat] = ruleInput.value;
+    });
+
+    statEditor.appendChild(row);
+
+    const option = document.createElement("option");
+    option.value = stat;
+    option.textContent = stat;
+    targetStat.appendChild(option);
+}
+
+mode.addEventListener("change", () => {
+    targetContainer.style.display =
+        mode.value === "maximize_stat" ||
+        mode.value === "minimize_stat"
+            ? "block"
+            : "none";
+});
+
+function combineStats(parts) {
+
+    const result = {...baseStats};
+
+    for (const part of parts) {
+
+        for (const [stat, value] of Object.entries(part)) {
+
+            if (stat === "name")
+                continue;
+
+            result[stat] = (result[stat] || 0) + value;
+        }
+    }
+
+    return result;
+}
+
+function scoreBuild(stats) {
+
+    let score = 0;
+
+    for (const [stat, value] of Object.entries(stats)) {
+
+        const rule = statRules[stat];
+        const weight = statWeights[stat] ?? 1;
+
+        if (rule === "good")
+            score += value * weight;
+
+        if (rule === "bad")
+            score -= value * weight;
+    }
+
+    return score;
+}
+
+function calculate() {
+
+    const selectedMode = mode.value;
+    const selectedTarget = targetStat.value;
+
+    const categoryParts = Object.values(categories);
+
+    let best = null;
+
+    let bestScore =
+        selectedMode === "best_overall" ||
+        selectedMode === "maximize_stat"
+            ? -Infinity
+            : Infinity;
+
+    function generate(index, combo) {
+
+        if (index === categoryParts.length) {
+
+            const stats = combineStats(combo);
+
+            let score;
+
+            if (
+                selectedMode === "best_overall" ||
+                selectedMode === "worst_overall"
+            ) {
+                score = scoreBuild(stats);
+            }
+
+            else if (selectedMode === "maximize_stat") {
+                score = stats[selectedTarget] || 0;
+            }
+
+            else if (selectedMode === "minimize_stat") {
+                score = stats[selectedTarget] || 0;
+            }
+
+            const better =
+                selectedMode === "best_overall" ||
+                selectedMode === "maximize_stat"
+                    ? score > bestScore
+                    : score < bestScore;
+
+            if (better) {
+
+                bestScore = score;
+
+                best = {
+                    combo: [...combo],
+                    stats
+                };
+            }
+
+            return;
+        }
+
+        for (const part of categoryParts[index]) {
+
+            combo.push(part);
+
+            generate(index + 1, combo);
+
+            combo.pop();
+        }
+    }
+
+    generate(0, []);
+
+    let html = "";
+
+    html += `<h2>Result</h2>`;
+
+    html += `<div class="build">`;
+
+    for (const part of best.combo) {
+        html += `<div class="build-item">${part.name}</div>`;
+    }
+
+    html += `</div>`;
+
+    html += `<h3>Stats</h3>`;
+
+    for (const [stat, value] of Object.entries(best.stats)) {
+
+        const className =
+            value > 0
+                ? "positive"
+                : value < 0
+                    ? "negative"
+                    : "neutral";
+
+        html += `
+            <div class="${className}">
+                ${stat}: ${Number(value.toFixed(2))}
+            </div>
+        `;
+    }
+
+    html += `
+        <div class="score">
+            Value: ${Number(bestScore.toFixed(2))}
+        </div>
+    `;
+
+    document.getElementById("result").innerHTML = html;
+}
+
+</script>
+
+</body>
+</html>
